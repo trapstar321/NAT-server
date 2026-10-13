@@ -1,0 +1,6 @@
+G:\My Game\NAT test\artifacts\introducer\introducer.exe
+G:\My Game\NAT test\artifacts\introducer\introducer.exe.config
+G:\My Game\NAT test\artifacts\introducer\introducer.pdb
+G:\My Game\NAT test\artifacts\introducer\LiteNetLib.dll
+G:\My Game\NAT test\artifacts\introducer\NatTest.Common.dll
+G:\My Game\NAT test\artifacts\introducer\NatTest.Common.pdb

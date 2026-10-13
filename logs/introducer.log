@@ -1,0 +1,4 @@
+Listening on 0.0.0.0:51410 UDP. Ctrl+C exits.
+Host registered smoke at 127.0.0.1:51420
+Introduced smoke host=127.0.0.1:51420 client=127.0.0.1:51421
+Smoke test completed; introducer stopped.

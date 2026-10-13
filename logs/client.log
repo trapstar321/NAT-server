@@ -1,0 +1,9 @@
+Client UDP port 51421; requesting session smoke via 127.0.0.1:51410.
+Introduction success: 192.168.1.111:51420 (Internal)
+Introduction success: 127.0.0.1:51420 (External)
+Accepting LiteNetLib peer request
+Direct peer connected: 127.0.0.1:51420
+Received: NATTEST/1|READY
+Application handshake confirmed; direct path works.
+Received: NATTEST/1|REPLY|ping
+Round trip confirmed: ping

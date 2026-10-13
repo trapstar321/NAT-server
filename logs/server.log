@@ -1,0 +1,7 @@
+Host UDP port 51420; registering session smoke via 127.0.0.1:51410.
+Introduced endpoint 192.168.1.111:51421 (Internal) token=smoke
+Introduced endpoint 127.0.0.1:51421 (External) token=smoke
+Accepting LiteNetLib protocol request
+Peer connected: 127.0.0.1:51421
+Received from 127.0.0.1:51421: NATTEST/1|HELLO
+Received from 127.0.0.1:51421: NATTEST/1|MSG|ping

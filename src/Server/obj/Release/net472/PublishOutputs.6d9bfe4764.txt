@@ -1,0 +1,6 @@
+G:\My Game\NAT test\artifacts\server\server.exe
+G:\My Game\NAT test\artifacts\server\server.exe.config
+G:\My Game\NAT test\artifacts\server\server.pdb
+G:\My Game\NAT test\artifacts\server\LiteNetLib.dll
+G:\My Game\NAT test\artifacts\server\NatTest.Common.dll
+G:\My Game\NAT test\artifacts\server\NatTest.Common.pdb
