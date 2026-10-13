@@ -1,6 +1,6 @@
 # LiteNetLib NAT punch-through test
 
-Three Windows console programs exercise LiteNetLib's built-in UDP NAT introduction: an introducer, a session host, and a client. The introducer exchanges observed endpoints and does not relay game messages.
+Three Windows console programs exercise LiteNetLib's built-in UDP NAT introduction: an introducer, a session host, and a client. The introducer verifies MatchmakingService HMAC-SHA-256 tokens, then exchanges observed endpoints without relaying game messages.
 
 ## Compatibility and prerequisites
 
@@ -23,29 +23,31 @@ Equivalent restore/build commands are `dotnet restore NatTest.sln` and `dotnet b
 
 Make UDP 50010 reachable on the introducer machine. On a public VPS, allow inbound UDP 50010 in its network firewall and Windows Firewall. At home, forward UDP 50010 on the router to the introducer PC and allow it through Windows Firewall. Binding to `0.0.0.0` only listens on local interfaces; it does not make the service internet-reachable.
 
-Run these in separate consoles (change `myhome.ddns.net` to your public hostname/IP):
+Configure the introducer with the same signing key as MatchmakingService, using the `MATCHMAKING__TOKENSIGNINGKEY` environment variable or the `--token-key` argument. Keep the key private. Create a hosted game and join it through MatchmakingService, then pass the returned host and client tokens to the corresponding programs.
+
+Run these in separate consoles (change the address and token placeholders):
 
 ```bat
-artifacts\introducer\introducer.exe --bind 0.0.0.0 --port 50010
-artifacts\server\server.exe --introducer myhome.ddns.net --port 50010 --session demo-room --local-port 50020
-artifacts\client\client.exe --introducer myhome.ddns.net --port 50010 --session demo-room --local-port 50021
+artifacts\introducer\introducer.exe --bind 0.0.0.0 --port 50010 --token-key YOUR_MATCHMAKING_SIGNING_KEY
+artifacts\server\server.exe --introducer myhome.ddns.net --port 50010 --token HOST_TOKEN --local-port 50020
+artifacts\client\client.exe --introducer myhome.ddns.net --port 50010 --token CLIENT_TOKEN --local-port 50021 --connect-timeout 5 --introduce-timeout 5
 ```
 
 The host and client bind independent local UDP ports. The introducer's hostname must resolve to its current public IP. Configure a No-IP updater on that network/account to refresh the DNS record when the ISP changes the address. DNS only tracks the address; it does not bypass CGNAT or firewalls.
 
-When the client receives the introduced endpoint, both endpoints try LiteNetLib's direct connection. The client sends an application handshake and periodic test message; the host replies. Look for `Direct peer connected`, `Application handshake confirmed`, and `Round trip confirmed`. Type messages in the client after the handshake; `/quit` exits. The client gives up waiting for introduction after 60 seconds; `--introduction-timeout` changes that limit. All applications accept `--timeout` seconds (default 30).
+The introducer acknowledges successful host registrations and valid client requests over unconnected UDP. It returns `NATTEST/1|INTRODUCER_ERR|<reason>` for invalid tokens, duplicate host registrations, capacity limits, missing hosts, and self-introductions. The host retries registration until it receives an acknowledgement or error, then stops sending requests. Host entries expire when the signed host token expires. Server and Client print acknowledgements and Introducer errors. An acknowledgement confirms the request reached the introducer; it does not confirm that a matching host exists or that the peer connection will succeed. When the client receives the introduced endpoint, it starts the LiteNetLib direct connection. After connecting, the client sends one `hello` message; the server logs the received message. The Client's `--introduce-timeout` controls how long it waits for NAT introduction, and `--connect-timeout` controls how long it waits for the direct peer connection. Both default to 5 seconds.
 
 ## Local test and two-network test
 
-For a local smoke test, run the introducer first, then host and client with `--introducer 127.0.0.1`, distinct `--local-port` values and the same `--session`. This proves startup, token matching, and application exchange on the same machine, but not public NAT traversal. To test across two internet connections, put the introducer on a publicly reachable VPS or correctly port-forward it at home; run host and client on separate networks. They do not need static inbound forwarding on their own routers, though their NAT/firewall must permit outbound UDP and unsolicited replies to the punched mapping.
+For a local smoke test, use valid host and client tokens issued by MatchmakingService, run the introducer first, then host and client with `--introducer 127.0.0.1` and distinct `--local-port` values. This proves startup, token matching, and application exchange on the same machine, but not public NAT traversal. To test across two internet connections, put the introducer on a publicly reachable VPS or correctly port-forward it at home; run host and client on separate networks. They do not need static inbound forwarding on their own routers, though their NAT/firewall must permit outbound UDP and unsolicited replies to the punched mapping.
 
-Example successful output includes introducer lines `Host registered demo-room` and `Introduced demo-room ...`, server `Peer connected` and `Received ...`, and client `Introduction success`, `Direct peer connected`, and `Round trip confirmed`.
+Example successful output includes introducer lines `Host registered <session>` and `Introduced <session> ...`, server `Peer connected` and `Received ...: hello`, and client `Introduction success` and `Direct peer connected`.
 
 ## Troubleshooting and limits
 
 - **DNS failure:** resolve `--introducer` with `nslookup`; check the No-IP updater and record.
 - **No introducer registration/request:** verify UDP 50010 on the host firewall, router forwarding/VPS firewall, and the public IP/hostname. ICMP tests do not verify UDP.
-- **Client says no live host:** session IDs must match exactly and the host must remain running; the introducer expires host registrations after 120 seconds without refresh.
+- **Client says no live host:** session IDs must match exactly and the host token must still be valid; the introducer expires host registrations when their signed token expires.
 - **Introduction arrives but no peer connection:** direct punching failed or was blocked. Check peer firewalls, NAT behavior, ISP CGNAT, and endpoint logs. NAT punch-through is not guaranteed; symmetric NAT and restrictive firewall/CGNAT combinations can prevent it. This version has no relay fallback.
 - These logs distinguish DNS resolution errors, lack of introducer requests, and unsuccessful direct connection, but UDP reachability can require packet capture or firewall logs to isolate.
 

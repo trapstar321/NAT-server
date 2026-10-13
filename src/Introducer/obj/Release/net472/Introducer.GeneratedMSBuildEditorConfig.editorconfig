@@ -1,6 +1,6 @@
 is_global = true
 build_property.RootNamespace = Introducer
-build_property.ProjectDir = G:\My Game\NAT test\src\Introducer\
+build_property.ProjectDir = D:\My Game\NAT test\src\Introducer\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
 build_property.CsWinRTUseWindowsUIXamlProjections = false

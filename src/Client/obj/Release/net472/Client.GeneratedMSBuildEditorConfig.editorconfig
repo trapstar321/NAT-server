@@ -1,6 +1,6 @@
 is_global = true
 build_property.RootNamespace = Client
-build_property.ProjectDir = G:\My Game\NAT test\src\Client\
+build_property.ProjectDir = D:\My Game\NAT test\src\Client\
 build_property.EnableComHosting = 
 build_property.EnableGeneratedComInterfaceComImportInterop = 
 build_property.CsWinRTUseWindowsUIXamlProjections = false

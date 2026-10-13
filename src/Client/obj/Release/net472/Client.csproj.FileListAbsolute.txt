@@ -28,3 +28,4 @@ G:\My Game\NAT test\src\Client\obj\Release\net472\Client.csproj.CoreCompileInput
 G:\My Game\NAT test\src\Client\obj\Release\net472\Client.csproj.Up2Date
 G:\My Game\NAT test\src\Client\obj\Release\net472\client.exe
 G:\My Game\NAT test\src\Client\obj\Release\net472\client.pdb
+D:\My Game\NAT test\src\Client\obj\Release\net472\Client.sourcelink.json

@@ -28,3 +28,4 @@ G:\My Game\NAT test\src\Introducer\obj\Release\net472\Introducer.csproj.CoreComp
 G:\My Game\NAT test\src\Introducer\obj\Release\net472\Introducer.csproj.Up2Date
 G:\My Game\NAT test\src\Introducer\obj\Release\net472\introducer.exe
 G:\My Game\NAT test\src\Introducer\obj\Release\net472\introducer.pdb
+D:\My Game\NAT test\src\Introducer\obj\Release\net472\Introducer.sourcelink.json
