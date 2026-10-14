@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("NatTest.Common")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+bb0b10b2d822221075152fad61e0118745d053c3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+c4d9dc7ba3a0a8b5d5d95952b3fc208517bd34d3")]
 [assembly: System.Reflection.AssemblyProductAttribute("NatTest.Common")]
 [assembly: System.Reflection.AssemblyTitleAttribute("NatTest.Common")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

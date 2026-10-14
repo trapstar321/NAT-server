@@ -14,7 +14,6 @@ namespace NatTest.Introducer
         {
             public IPEndPoint Local;
             public IPEndPoint Remote;
-            public long Expires;
         }
 
         private readonly Dictionary<string, Host> hosts = new Dictionary<string, Host>(StringComparer.Ordinal);
@@ -35,10 +34,9 @@ namespace NatTest.Introducer
             {
                 char role;
                 string session;
-                long expires;
                 string tokenError;
 
-                if (!TokenUtils.TryParseToken(token, signingKey, out role, out session, out expires, out tokenError))
+                if (!TokenUtils.TryParseToken(token, signingKey, out role, out session, out tokenError))
                 {
                     Console.WriteLine("Rejected NAT registration/request: " + tokenError);
                     SendError(remote, tokenError);
@@ -49,7 +47,6 @@ namespace NatTest.Introducer
                 {
                     Host previous;
                     if (hosts.TryGetValue(session, out previous) &&
-                        DateTimeOffset.UtcNow.ToUnixTimeSeconds() < previous.Expires &&
                         !previous.Remote.Equals(remote))
                     {
                         Console.WriteLine("Rejected duplicate host registration for active session " + session);
@@ -64,7 +61,7 @@ namespace NatTest.Introducer
                         return;
                     }
 
-                    hosts[session] = new Host { Local = local, Remote = remote, Expires = expires };
+                    hosts[session] = new Host { Local = local, Remote = remote };
                     SendAcknowledgment(remote);
                     Console.WriteLine("Host registered " + session + " at " + remote);
                     return;
@@ -73,8 +70,7 @@ namespace NatTest.Introducer
                 SendAcknowledgment(remote);
 
                 Host host;
-                if (!hosts.TryGetValue(session, out host) ||
-                    host.Expires <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                if (!hosts.TryGetValue(session, out host))
                 {
                     Console.WriteLine("No live host yet for " + session);
                     SendError(remote, "no-live-host");
@@ -131,24 +127,6 @@ namespace NatTest.Introducer
             Console.WriteLine("NAT introduction failed for " + endpoint + " token=" + token);
         }
 
-        public void Expire()
-        {
-            var dead = new List<string>();
-            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            foreach (var pair in hosts)
-            {
-                if (pair.Value.Expires <= now)
-                {
-                    dead.Add(pair.Key);
-                }
-            }
-
-            foreach (string session in dead)
-            {
-                hosts.Remove(session);
-                Console.WriteLine("Expired " + session);
-            }
-        }
     }
 
     internal static class Program
@@ -195,7 +173,6 @@ namespace NatTest.Introducer
                 {
                     manager.PollEvents();
                     manager.NatPunchModule.PollEvents();
-                    punchListener.Expire();
                     Thread.Sleep(15);
                 }
 

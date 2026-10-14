@@ -9,9 +9,9 @@ namespace NatTest.Common
 {
     public static class TokenUtils
     {
-        public static bool TryParseToken(string token, string signingKey, out char role, out string session, out long expires, out string errorCode)
+        public static bool TryParseToken(string token, string signingKey, out char role, out string session, out string errorCode)
         {
-            role = '\0'; session = null; expires = 0;
+            role = '\0'; session = null;
             errorCode = "invalid-token";
             if (String.IsNullOrEmpty(token) || token.Length > 4096 || String.IsNullOrWhiteSpace(signingKey) || Encoding.UTF8.GetByteCount(signingKey) < 32) return false;
             string[] parts = token.Split('.');
@@ -30,7 +30,8 @@ namespace NatTest.Common
                 if (claims == null || String.IsNullOrWhiteSpace(claims.Session) || claims.Session.Length > 120 || claims.Session.IndexOf('|') >= 0 ||
                     (claims.Role != "H" && claims.Role != "C")) return false;
 
-                if (claims.Expires <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                bool isHost = claims.Role == "H";
+                if (!isHost && claims.Expires <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 {
                     errorCode = "token-expired";
                     return false;
@@ -38,7 +39,6 @@ namespace NatTest.Common
 
                 role = claims.Role[0];
                 session = claims.Session;
-                expires = claims.Expires;
                 errorCode = null;
                 return true;
             }

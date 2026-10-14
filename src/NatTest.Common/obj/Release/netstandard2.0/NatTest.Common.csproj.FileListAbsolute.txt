@@ -19,3 +19,4 @@ G:\My Game\NAT test\src\NatTest.Common\obj\Release\netstandard2.0\NatTest.Common
 G:\My Game\NAT test\src\NatTest.Common\obj\Release\netstandard2.0\NatTest.Common.dll
 G:\My Game\NAT test\src\NatTest.Common\obj\Release\netstandard2.0\NatTest.Common.pdb
 D:\My Game\NAT test\src\NatTest.Common\obj\Release\netstandard2.0\NatTest.Common.sourcelink.json
+G:\My Game\NAT test\src\NatTest.Common\obj\Release\netstandard2.0\NatTest.Common.sourcelink.json
