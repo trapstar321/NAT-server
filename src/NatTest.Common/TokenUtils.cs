@@ -30,8 +30,7 @@ namespace NatTest.Common
                 if (claims == null || String.IsNullOrWhiteSpace(claims.Session) || claims.Session.Length > 120 || claims.Session.IndexOf('|') >= 0 ||
                     (claims.Role != "H" && claims.Role != "C")) return false;
 
-                bool isHost = claims.Role == "H";
-                if (!isHost && claims.Expires <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
+                if (claims.Expires <= DateTimeOffset.UtcNow.ToUnixTimeSeconds())
                 {
                     errorCode = "token-expired";
                     return false;

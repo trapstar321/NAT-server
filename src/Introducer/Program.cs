@@ -14,18 +14,21 @@ namespace NatTest.Introducer
         {
             public IPEndPoint Local;
             public IPEndPoint Remote;
+            public DateTime Seen;
         }
 
         private readonly Dictionary<string, Host> hosts = new Dictionary<string, Host>(StringComparer.Ordinal);
         private readonly NetManager manager;
         private readonly NatPunchModule nat;
         private readonly string signingKey;
+        private readonly int timeout;
 
-        public PunchListener(NetManager manager, string signingKey)
+        public PunchListener(NetManager manager, string signingKey, int timeout)
         {
             this.manager = manager;
             this.nat = manager.NatPunchModule;
             this.signingKey = signingKey;
+            this.timeout = timeout;
         }
 
         public void OnNatIntroductionRequest(IPEndPoint local, IPEndPoint remote, string token)
@@ -47,6 +50,7 @@ namespace NatTest.Introducer
                 {
                     Host previous;
                     if (hosts.TryGetValue(session, out previous) &&
+                        DateTime.UtcNow - previous.Seen <= TimeSpan.FromSeconds(timeout) &&
                         !previous.Remote.Equals(remote))
                     {
                         Console.WriteLine("Rejected duplicate host registration for active session " + session);
@@ -61,7 +65,7 @@ namespace NatTest.Introducer
                         return;
                     }
 
-                    hosts[session] = new Host { Local = local, Remote = remote };
+                    hosts[session] = new Host { Local = local, Remote = remote, Seen = DateTime.UtcNow };
                     SendAcknowledgment(remote);
                     Console.WriteLine("Host registered " + session + " at " + remote);
                     return;
@@ -70,7 +74,8 @@ namespace NatTest.Introducer
                 SendAcknowledgment(remote);
 
                 Host host;
-                if (!hosts.TryGetValue(session, out host))
+                if (!hosts.TryGetValue(session, out host) ||
+                    DateTime.UtcNow - host.Seen > TimeSpan.FromSeconds(timeout))
                 {
                     Console.WriteLine("No live host yet for " + session);
                     SendError(remote, "no-live-host");
@@ -127,6 +132,22 @@ namespace NatTest.Introducer
             Console.WriteLine("NAT introduction failed for " + endpoint + " token=" + token);
         }
 
+        public void Expire()
+        {
+            var dead = new List<string>();
+            foreach (var pair in hosts)
+            {
+                if (DateTime.UtcNow - pair.Value.Seen > TimeSpan.FromSeconds(timeout))
+                    dead.Add(pair.Key);
+            }
+
+            foreach (string session in dead)
+            {
+                hosts.Remove(session);
+                Console.WriteLine("Expired " + session);
+            }
+        }
+
     }
 
     internal static class Program
@@ -141,11 +162,13 @@ namespace NatTest.Introducer
                 {
                     { "bind", "0.0.0.0" },
                     { "port", "50010" },
+                    { "timeout", "30" },
                     { "token-key", Environment.GetEnvironmentVariable("MATCHMAKING__TOKENSIGNINGKEY") ?? "" }
                 });
 
                 IPAddress bindAddress = IPAddress.Parse(options.Get("bind"));
                 int port = options.Int("port", 1, 65535);
+                int timeout = options.Int("timeout", 10, 86400);
                 string signingKey = options.Get("token-key");
                 if (String.IsNullOrWhiteSpace(signingKey) || System.Text.Encoding.UTF8.GetByteCount(signingKey) < 32)
                     throw new ArgumentException("A token signing key of at least 32 UTF-8 bytes is required via --token-key or MATCHMAKING__TOKENSIGNINGKEY.");
@@ -154,7 +177,7 @@ namespace NatTest.Introducer
                 manager = new NetManager(listener);
                 manager.NatPunchEnabled = true;
                 manager.UnconnectedMessagesEnabled = true;
-                var punchListener = new PunchListener(manager, signingKey);
+                var punchListener = new PunchListener(manager, signingKey, timeout);
                 manager.NatPunchModule.Init(punchListener);
 
                 if (!manager.Start(bindAddress, IPAddress.IPv6Any, port))
@@ -173,6 +196,7 @@ namespace NatTest.Introducer
                 {
                     manager.PollEvents();
                     manager.NatPunchModule.PollEvents();
+                    punchListener.Expire();
                     Thread.Sleep(15);
                 }
 
