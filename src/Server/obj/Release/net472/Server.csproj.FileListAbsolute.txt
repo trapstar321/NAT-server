@@ -30,3 +30,4 @@ G:\My Game\NAT test\src\Server\obj\Release\net472\server.exe
 G:\My Game\NAT test\src\Server\obj\Release\net472\server.pdb
 D:\My Game\NAT test\src\Server\obj\Release\net472\Server.sourcelink.json
 G:\My Game\NAT test\src\Server\obj\Release\net472\Server.sourcelink.json
+D:\My Game\NAT test\src\Server\bin\Release\net472\BouncyCastle.Cryptography.dll

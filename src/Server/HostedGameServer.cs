@@ -4,6 +4,8 @@ using System.Net;
 using System.Threading;
 using LiteNetLib;
 using LiteNetLib.Utils;
+using NatTest.Common;
+using Org.BouncyCastle.Crypto.Parameters;
 
 namespace NatTest.Server
 {
@@ -14,7 +16,7 @@ namespace NatTest.Server
         internal delegate void ServerInfoHandler(string message);
         internal ServerInfoHandler OnInfo { get; set; }
 
-        private const string ConnectionKey = "NATTEST/1";
+        private const string ProtocolKey = "NATTEST/1";
         private const string IntroducerAcknowledgment = "NATTEST/1|INTRODUCER_ACK";
         private const string IntroducerErrorPrefix = "NATTEST/1|INTRODUCER_ERR|";
         private const int ConnectionLimit = 16;
@@ -24,19 +26,28 @@ namespace NatTest.Server
         private readonly int disconnectTimeout;
         private readonly int introduceTimeout;
         private readonly string token;
+        private readonly MatchmakingTokenClaims hostClaims;
+        private readonly ECPublicKeyParameters matchmakingKey;
+        private readonly ECPublicKeyParameters introducerKey;
 
         private NetManager manager;
-        private readonly HashSet<string> pending = new HashSet<string>(StringComparer.Ordinal);
+        // Endpoint -> player ID for pending and connected peers, so each player has at most one connection.
+        private readonly Dictionary<string, Guid> players = new Dictionary<string, Guid>(StringComparer.Ordinal);
         private bool introducerResponded;
         private DateTime introduceDeadline = DateTime.MaxValue;
 
-        public HostedGameServer(IPEndPoint introducer, int localPort, int disconnectTimeout, int introduceTimeout, string token)
+        // hostClaims must come from the verified host token; the session and host player ID are taken from it.
+        public HostedGameServer(IPEndPoint introducer, int localPort, int disconnectTimeout, int introduceTimeout, string token,
+            MatchmakingTokenClaims hostClaims, ECPublicKeyParameters matchmakingKey, ECPublicKeyParameters introducerKey)
         {
             this.introducer = introducer;
             this.localPort = localPort;
             this.disconnectTimeout = disconnectTimeout;
             this.introduceTimeout = introduceTimeout;
             this.token = token;
+            this.hostClaims = hostClaims;
+            this.matchmakingKey = matchmakingKey;
+            this.introducerKey = introducerKey;
         }
 
         public void Run()
@@ -71,31 +82,16 @@ namespace NatTest.Server
                 finally { reader.Recycle(); }
             };
 
-            listener.ConnectionRequestEvent += request =>
-            {
-                string endpoint = request.RemoteEndPoint.ToString();
-                if (manager.ConnectedPeersCount + pending.Count < ConnectionLimit || pending.Contains(endpoint))
-                {
-                    pending.Add(endpoint);
-                    ReportInfo("Accepting LiteNetLib protocol request");
-                    request.AcceptIfKey(ConnectionKey);
-                }
-                else
-                {
-                    ReportError("Peer limit reached; rejected connection from " + endpoint + ".");
-                    request.Reject();
-                }
-            };
+            listener.ConnectionRequestEvent += OnConnectionRequest;
 
             listener.PeerConnectedEvent += peer =>
             {
-                pending.Remove(new IPEndPoint(peer.Address, peer.Port).ToString());
                 ReportInfo("Peer connected: " + peer.Address + ":" + peer.Port);
             };
 
             listener.PeerDisconnectedEvent += (peer, info) =>
             {
-                pending.Remove(new IPEndPoint(peer.Address, peer.Port).ToString());
+                players.Remove(new IPEndPoint(peer.Address, peer.Port).ToString());
                 ReportError("Peer disconnected: " + peer.Address + ":" + peer.Port + " " + info.Reason);
             };
 
@@ -104,7 +100,7 @@ namespace NatTest.Server
                 try
                 {
                     string message = reader.GetString(2048);
-                    ReportInfo("Received from " + peer.Address + ":" + peer.Port + ": " + message);
+                    ReportInfo("Received from player " + peer.Tag + " at " + peer.Address + ":" + peer.Port + ": " + message);
                 }
                 catch (Exception exception)
                 {
@@ -124,7 +120,7 @@ namespace NatTest.Server
                 throw new InvalidOperationException("Cannot bind local UDP port " + localPort);
             }
 
-            ReportInfo("Host UDP port " + localPort + "; registering with " + introducer + ".");
+            ReportInfo("Host UDP port " + localPort + " for session " + hostClaims.SessionId + " as player " + hostClaims.PlayerId + "; registering with " + introducer + ".");
             Console.CancelKeyPress += (sender, eventArgs) =>
             {
                 eventArgs.Cancel = true;
@@ -179,9 +175,64 @@ namespace NatTest.Server
             ReportError("NAT introduction failed for " + endpoint + ".");
         }
 
+        // The connecting client is authorized by its MM client token in OnConnectionRequest; this check only reports
+        // which player the introducer paired with this host, and flags punches that did not come from a real introduction.
         public void OnNatIntroductionSuccess(IPEndPoint endpoint, NatAddressType type, string token)
         {
-            ReportInfo("Introduced endpoint " + endpoint + " (" + type + ") token=" + token);
+            IntroductionTokenClaims claims;
+            string error;
+            if (!NatTokens.TryVerifyIntroductionToken(token, introducerKey, NatTokens.NowUnixSeconds(), out claims, out error))
+                ReportError("Ignored introduction from " + endpoint + " (" + type + "): " + error + ".");
+            else if (claims.SessionId != hostClaims.SessionId || claims.HostPlayerId != hostClaims.PlayerId)
+                ReportError("Ignored introduction from " + endpoint + " (" + type + "): introduction-mismatch.");
+            else
+                ReportInfo("Verified introduction of player " + claims.ClientPlayerId + " at " + endpoint + " (" + type + ").");
+        }
+
+        // The client sends the protocol key followed by its MM client token. MM only issues that token after authorizing the
+        // join (including the private-game secret), so the host does not need the game secret.
+        private void OnConnectionRequest(ConnectionRequest request)
+        {
+            string endpoint = request.RemoteEndPoint.ToString();
+            string reason = AuthorizeConnection(request, endpoint);
+            if (reason != null)
+            {
+                ReportError("Rejected connection from " + endpoint + ": " + reason + ".");
+                var writer = new NetDataWriter();
+                writer.Put(reason);
+                request.Reject(writer);
+                return;
+            }
+
+            Guid player = players[endpoint];
+            NetPeer peer = request.Accept();
+            if (peer != null) peer.Tag = player;
+            ReportInfo("Accepted player " + player + " from " + endpoint + ".");
+        }
+
+        private string AuthorizeConnection(ConnectionRequest request, string endpoint)
+        {
+            string protocol, clientToken;
+            try
+            {
+                protocol = request.Data.GetString(32);
+                clientToken = request.Data.GetString(NatTokens.LiteNetLibMaxTokenLength);
+            }
+            catch (Exception) { return "malformed-request"; }
+            if (protocol != ProtocolKey) return "protocol-mismatch";
+
+            MatchmakingTokenClaims claims;
+            string error;
+            if (!NatTokens.TryVerifyMatchmakingToken(clientToken, matchmakingKey, NatTokens.NowUnixSeconds(), out claims, out error)) return error;
+            if (claims.Role != NatTokens.ClientRole) return "client-token-required";
+            if (claims.SessionId != hostClaims.SessionId) return "session-mismatch";
+
+            Guid existing;
+            if (players.TryGetValue(endpoint, out existing)) return existing == claims.PlayerId ? null : "endpoint-in-use";
+            if (players.ContainsValue(claims.PlayerId)) return "player-already-connected";
+            if (players.Count >= ConnectionLimit) return "peer-limit-reached";
+            players[endpoint] = claims.PlayerId;
+            return null;
         }
 
         private void ReportError(string message)

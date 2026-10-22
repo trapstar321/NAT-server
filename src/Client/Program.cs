@@ -18,7 +18,9 @@ namespace NatTest.Client
                     { "token", "" },
                     { "local-port", "50021" },
                     { "connect-timeout", "5" },
-                    { "introduce-timeout", "5" }
+                    { "introduce-timeout", "5" },
+                    { "introducer-public-key", "keys\\introducer-signing.pub.pem" },
+                    { "host-player", "" }
                 });
 
                 int introducerPort = options.Int("port", 1, 65535);
@@ -29,8 +31,18 @@ namespace NatTest.Client
                 if (String.IsNullOrWhiteSpace(token))
                     throw new ArgumentException("A client token from MatchmakingService is required via --token.");
 
+                // The client has no MM public key; it reads its own token only to learn its session and player ID.
+                MatchmakingTokenClaims clientClaims;
+                if (!NatTokens.TryReadMatchmakingToken(token, out clientClaims) || clientClaims.Role != NatTokens.ClientRole)
+                    throw new ArgumentException("--token must be a client (C) token from POST /join.");
+
+                Guid expectedHostPlayerId = Guid.Empty;
+                if (options.Get("host-player").Length > 0 && !Guid.TryParse(options.Get("host-player"), out expectedHostPlayerId))
+                    throw new ArgumentException("Invalid --host-player; use the hostPlayerId from the game listing.");
+
+                var introducerKey = SigningKeys.LoadPublicKeyFile(options.Get("introducer-public-key"), "--introducer-public-key");
                 IPEndPoint introducer = Options.Resolve(options.Get("introducer"), introducerPort);
-                var client = new HostedGameClient(introducer, localPort, connectTimeout, introduceTimeout, token);
+                var client = new HostedGameClient(introducer, localPort, connectTimeout, introduceTimeout, token, clientClaims, introducerKey, expectedHostPlayerId);
                 
                 client.OnErrorOccurred+= (message) =>
                 {

@@ -3,6 +3,8 @@ using System.Net;
 using System.Threading;
 using LiteNetLib;
 using LiteNetLib.Utils;
+using NatTest.Common;
+using Org.BouncyCastle.Crypto.Parameters;
 
 namespace NatTest.Client
 {
@@ -13,7 +15,7 @@ namespace NatTest.Client
         internal delegate void ClientInfoHandler(string message);
         internal ClientInfoHandler OnInfo { get; set; }
 
-        private const string ConnectionKey = "NATTEST/1";
+        private const string ProtocolKey = "NATTEST/1";
         private const string IntroducerAcknowledgment = "NATTEST/1|INTRODUCER_ACK";
         private const string IntroducerErrorPrefix = "NATTEST/1|INTRODUCER_ERR|";
 
@@ -22,6 +24,9 @@ namespace NatTest.Client
         private readonly int connectTimeout;
         private readonly int introduceTimeout;
         private readonly string token;
+        private readonly MatchmakingTokenClaims clientClaims;
+        private readonly ECPublicKeyParameters introducerKey;
+        private readonly Guid expectedHostPlayerId;
 
         private NetManager manager;
         private volatile bool connected;
@@ -31,13 +36,18 @@ namespace NatTest.Client
         private bool attempted;
         private DateTime connectDeadline;
 
-        public HostedGameClient(IPEndPoint introducer, int localPort, int connectTimeout, int introduceTimeout, string token)
+        // clientClaims are read from the client's own token; expectedHostPlayerId (the listing's hostPlayerId) is optional.
+        public HostedGameClient(IPEndPoint introducer, int localPort, int connectTimeout, int introduceTimeout, string token,
+            MatchmakingTokenClaims clientClaims, ECPublicKeyParameters introducerKey, Guid expectedHostPlayerId)
         {
             this.introducer = introducer;
             this.localPort = localPort;
             this.connectTimeout = connectTimeout;
             this.introduceTimeout = introduceTimeout;
             this.token = token;
+            this.clientClaims = clientClaims;
+            this.introducerKey = introducerKey;
+            this.expectedHostPlayerId = expectedHostPlayerId;
         }
 
         public void Run()
@@ -80,7 +90,13 @@ namespace NatTest.Client
 
             listener.PeerDisconnectedEvent += (peer, info) =>
             {
-                ReportError("Disconnected from " + peer.Address + ":" + peer.Port + ": " + info.Reason);
+                string reason = "";
+                try
+                {
+                    if (info.AdditionalData != null && info.AdditionalData.AvailableBytes > 0) reason = " (" + info.AdditionalData.GetString(64) + ")";
+                }
+                catch (Exception) { }
+                ReportError("Disconnected from " + peer.Address + ":" + peer.Port + ": " + info.Reason + reason);
                 connected = false;
             };
 
@@ -91,7 +107,7 @@ namespace NatTest.Client
                 throw new InvalidOperationException("Cannot bind local UDP port " + localPort);
             }
 
-            ReportInfo("Client UDP port " + localPort + "; requesting introduction via " + introducer + ".");
+            ReportInfo("Client UDP port " + localPort + " for session " + clientClaims.SessionId + " as player " + clientClaims.PlayerId + "; requesting introduction via " + introducer + ".");
             Console.CancelKeyPress += (sender, eventArgs) =>
             {
                 eventArgs.Cancel = true;
@@ -155,8 +171,17 @@ namespace NatTest.Client
             ReportError("NAT introduction failed for " + endpoint + ".");
         }
 
-        public void OnNatIntroductionSuccess(IPEndPoint endpoint, NatAddressType type, string token)
+        // The token here is the introducer's introduction token relayed in the host's punch packet. Anyone can send a punch,
+        // so only connect when the introducer signed this pairing of our session, our player, and the expected host.
+        public void OnNatIntroductionSuccess(IPEndPoint endpoint, NatAddressType type, string introductionToken)
         {
+            string rejection = CheckIntroduction(introductionToken);
+            if (rejection != null)
+            {
+                ReportError("Ignored introduction from " + endpoint + " (" + type + "): " + rejection + ".");
+                return;
+            }
+
             if (!introduced) connectDeadline = DateTime.UtcNow.AddSeconds(connectTimeout);
             introduced = true;
             ReportInfo("Introduction success: " + endpoint + " (" + type + ")");
@@ -164,8 +189,23 @@ namespace NatTest.Client
             if (type == NatAddressType.External && !attempted && manager.ConnectedPeersCount == 0)
             {
                 attempted = true;
-                manager.Connect(endpoint, ConnectionKey);
+                // The host authorizes the connection with our MM client token.
+                var connectData = new NetDataWriter();
+                connectData.Put(ProtocolKey);
+                connectData.Put(token);
+                manager.Connect(endpoint, connectData);
             }
+        }
+
+        private string CheckIntroduction(string introductionToken)
+        {
+            IntroductionTokenClaims claims;
+            string error;
+            if (!NatTokens.TryVerifyIntroductionToken(introductionToken, introducerKey, NatTokens.NowUnixSeconds(), out claims, out error)) return error;
+            if (claims.SessionId != clientClaims.SessionId) return "session-mismatch";
+            if (claims.ClientPlayerId != clientClaims.PlayerId) return "client-player-mismatch";
+            if (expectedHostPlayerId != Guid.Empty && claims.HostPlayerId != expectedHostPlayerId) return "host-player-mismatch";
+            return null;
         }
 
         private void ReportError(string message)

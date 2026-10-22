@@ -5,4 +5,5 @@
 *.user
 *.suo
 .env
-appsettings.Local.json
+appsettings.Local.jsonkeys/
+*.pem

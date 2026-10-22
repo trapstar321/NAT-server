@@ -30,3 +30,4 @@ G:\My Game\NAT test\src\Introducer\obj\Release\net472\introducer.exe
 G:\My Game\NAT test\src\Introducer\obj\Release\net472\introducer.pdb
 D:\My Game\NAT test\src\Introducer\obj\Release\net472\Introducer.sourcelink.json
 G:\My Game\NAT test\src\Introducer\obj\Release\net472\Introducer.sourcelink.json
+D:\My Game\NAT test\src\Introducer\bin\Release\net472\BouncyCastle.Cryptography.dll

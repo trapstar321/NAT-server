@@ -18,7 +18,9 @@ namespace NatTest.Server
                     { "token", "" },
                     { "local-port", "50020" },
                     { "timeout", "30" },
-                    { "introduce-timeout", "5" }
+                    { "introduce-timeout", "5" },
+                    { "mm-public-key", "keys\\mm-nat-signing.pub.pem" },
+                    { "introducer-public-key", "keys\\introducer-signing.pub.pem" }
                 });
 
                 int introducerPort = options.Int("port", 1, 65535);
@@ -29,8 +31,17 @@ namespace NatTest.Server
                 if (String.IsNullOrWhiteSpace(token))
                     throw new ArgumentException("A host token from MatchmakingService is required via --token.");
 
+                var matchmakingKey = SigningKeys.LoadPublicKeyFile(options.Get("mm-public-key"), "--mm-public-key");
+                var introducerKey = SigningKeys.LoadPublicKeyFile(options.Get("introducer-public-key"), "--introducer-public-key");
+                MatchmakingTokenClaims hostClaims;
+                string tokenError;
+                if (!NatTokens.TryVerifyMatchmakingToken(token, matchmakingKey, NatTokens.NowUnixSeconds(), out hostClaims, out tokenError))
+                    throw new ArgumentException("The --token host token is not valid: " + tokenError + ".");
+                if (hostClaims.Role != NatTokens.HostRole)
+                    throw new ArgumentException("--token must be a host (H) token from POST /games.");
+
                 IPEndPoint introducer = Options.Resolve(options.Get("introducer"), introducerPort);
-                var server = new HostedGameServer(introducer, localPort, timeout, introduceTimeout, token);
+                var server = new HostedGameServer(introducer, localPort, timeout, introduceTimeout, token, hostClaims, matchmakingKey, introducerKey);
                 
                 server.OnErrorOccurred += (message) =>
                 {
